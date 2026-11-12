@@ -98,6 +98,31 @@ jobs:
           ls -la ShonarBanglaRP-arm64.apk
           "$BT/aapt" dump badging ShonarBanglaRP-arm64.apk | grep -E "package|application-label|native-code" | head
 
+      - name: Verify icon + label
+        run: |
+          python3 - <<'PY'
+          import zipfile, io
+          from PIL import Image
+          z = zipfile.ZipFile('ShonarBanglaRP-arm64.apk')
+          want = {(48,48),(72,72),(96,96),(144,144),(192,192),(108,108),(162,162),(216,216),(324,324),(432,432)}
+          chars = ' .:-=+*#%@'
+          for n in z.namelist():
+              if not n.endswith('.webp'):
+                  continue
+              try:
+                  im = Image.open(io.BytesIO(z.read(n)))
+              except Exception:
+                  continue
+              if im.size not in want:
+                  continue
+              if im.size not in ((192,192),(432,432)):
+                  continue
+              g = im.convert('L').resize((40,40))
+              print('--- %s %sx%s ---' % (n, im.size[0], im.size[1]))
+              for y in range(40):
+                  print(''.join(chars[min(9, g.getpixel((x,y))*10//256)] for x in range(40)))
+          PY
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
