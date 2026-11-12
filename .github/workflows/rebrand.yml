@@ -71,6 +71,7 @@ jobs:
 
       - name: Ensure signing keystore (persist in repo)
         run: |
+          mkdir -p keys
           if [ ! -f keys/sbrp.jks ]; then
             keytool -genkeypair -v -keystore keys/sbrp.jks -alias sbrp \
               -keyalg RSA -keysize 2048 -validity 10950 \
