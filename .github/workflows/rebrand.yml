@@ -63,6 +63,12 @@ jobs:
       - name: Patch branding (name + Bangladeshi icon set + green theme)
         env:
           LABEL: ${{ github.event.inputs.label }}
+          ART: artwork/icon_source.png
+          ART_ROUND: artwork/icon_source.png
+          ART_FG: artwork/icon_source.png
+          FG_RATIO: '1.0'
+          MASK: '1'
+          SQUIRCLE: '0.22'
         run: python3 patch_apk.py work
 
       - name: Patch theme palette in dex (Bangladeshi green)

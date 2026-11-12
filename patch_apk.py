@@ -8,7 +8,9 @@ Env:
   ART        legacy squircle artwork     (default artwork/icon.png)
   ART_ROUND  legacy round artwork        (default artwork/icon_round.png)
   ART_FG     adaptive foreground artwork (default artwork/icon_fg.png)
-  FG_RATIO   foreground scale on canvas  (default 0.66)
+  FG_RATIO   foreground scale on canvas  (default 0.66; >=0.999 = full bleed)
+  MASK       apply squircle/circle alpha to legacy rasters (default 1)
+  SQUIRCLE   squircle corner radius frac of legacy icon   (default 0.22)
 """
 import glob
 import os
@@ -21,6 +23,8 @@ ART = os.environ.get('ART', 'artwork/icon.png')
 ART_ROUND = os.environ.get('ART_ROUND', 'artwork/icon_round.png')
 ART_FG = os.environ.get('ART_FG', 'artwork/icon_fg.png')
 FG_RATIO = float(os.environ.get('FG_RATIO', '0.66'))
+MASK = os.environ.get('MASK', '1').lower() not in ('0', 'false', 'no')
+SQUIRCLE = float(os.environ.get('SQUIRCLE', '0.22'))
 
 # Bangladeshi professional theme
 BG_TOP = '#0E825C'      # bottle green (flag field, light end)
@@ -29,9 +33,10 @@ WINDOW_LIGHT = '#F2F8F4'  # green-tinted white window background
 WINDOW_DARK = '#0A1512'   # green-tinted near black
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageDraw
 except Exception:
     Image = None
+    ImageDraw = None
 
 
 def rd(p):
@@ -48,6 +53,25 @@ def banner(t):
 
 def base_of(ref):
     return ref.split('/', 1)[1] if ref and ref.startswith('@') else None
+
+
+def _rounded_mask(im, radius_frac):
+    w, h = im.size
+    m = Image.new('L', (w, h), 0)
+    ImageDraw.Draw(m).rounded_rectangle(
+        [0, 0, w - 1, h - 1], radius=int(min(w, h) * radius_frac), fill=255)
+    out = im.copy()
+    out.putalpha(m)
+    return out
+
+
+def _circle_mask(im):
+    w, h = im.size
+    m = Image.new('L', (w, h), 0)
+    ImageDraw.Draw(m).ellipse([0, 0, w - 1, h - 1], fill=255)
+    out = im.copy()
+    out.putalpha(m)
+    return out
 
 
 # ---------------------------------------------------------------- manifest
@@ -90,6 +114,69 @@ for sp in glob.glob(os.path.join(WORK, 'res', 'values*', 'strings.xml')):
     if t2 != t:
         wr(sp, t2)
         print('strings updated:', os.path.relpath(sp, WORK))
+
+# ---------------------------------------------------------------- credits / about
+banner('CREDITS / ABOUT PANEL')
+CREDIT_EN = {
+    'launcher_about_description': (
+        'Shonar Bangla RP is a community rebrand of SA-MP Android \u2014 the '
+        'excellent open-source SA-MP client for Android built by the '
+        'SA-MP-Android developer (th1nk). All credit for the original app '
+        'belongs to him: huge respect and heartfelt thanks for his hard work. '
+        'Original project: github.com/SA-MP-Android'),
+    'launcher_about_github': 'Original Developer \u00b7 GitHub',
+    'launcher_about_telegram': 'Original Developer \u00b7 Telegram',
+}
+CREDIT_BN = {
+    'launcher_about_description': (
+        '\u09b6\u09cb\u09a8\u09be\u09b0 \u09ac\u09be\u0982\u09b2\u09be '
+        '\u0986\u09b0\u09aa\u09bf \u2014 \u098f\u09b8\u098f\u09ae\u09aa\u09bf '
+        '\u0985\u09cd\u09af\u09be\u09a8\u09cd\u09a1\u09cd\u09b0\u09df\u09c7\u09a1\u09c7\u09b0 '
+        '\u098f\u0995\u099f\u09bf \u0995\u09ae\u09bf\u0989\u09a8\u09bf\u099f\u09bf '
+        '\u09b0\u09bf\u09ac\u09cd\u09b0\u09cd\u09af\u09be\u09a8\u09cd\u09a1\u0964 '
+        '\u09ae\u09c2\u09b2 \u0985\u09cd\u09af\u09be\u09aa\u099f\u09bf '
+        '\u09a4\u09c8\u09b0\u09bf \u0995\u09b0\u09c7\u099b\u09c7\u09a8 '
+        'SA-MP-Android \u09a1\u09c7\u09ad\u09c7\u09b2\u09aa\u09be\u09b0 '
+        '(\u09a5\u09bf\u0982\u0995)\u0964 \u09a4\u09be\u0981\u09b0 '
+        '\u0995\u09a0\u09cb\u09b0 \u09aa\u09b0\u09bf\u09b6\u09cd\u09b0\u09ae\u09c7\u09b0 '
+        '\u099c\u09a8\u09cd\u09af \u0986\u09a8\u09cd\u09a4\u09b0\u09bf\u0995 '
+        '\u0995\u09c3\u09a4\u099c\u09cd\u099e\u09a4\u09be \u0993 '
+        '\u09b6\u09cd\u09b0\u09a6\u09cd\u09a7\u09be\u0964 '
+        '\u09ae\u09c2\u09b2 \u09aa\u09cd\u09b0\u099c\u09c7\u0995\u09cd\u099f: '
+        'github.com/SA-MP-Android'),
+    'launcher_about_github': '\u09ae\u09c2\u09b2 \u09a1\u09c7\u09ad\u09c7\u09b2\u09aa\u09be\u09b0 \u00b7 GitHub',
+    'launcher_about_telegram': '\u09ae\u09c2\u09b2 \u09a1\u09c7\u09ad\u09c7\u09b2\u09aa\u09be\u09b0 \u00b7 Telegram',
+}
+
+
+def esc_xml(s):
+    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+
+def apply_credit(path, table):
+    t = rd(path)
+    o = t
+    for name, val in table.items():
+        pat = r'(<string name="%s"[^>]*>)[^<]*(</string>)' % re.escape(name)
+        t = re.sub(pat, lambda m: m.group(1) + esc_xml(val) + m.group(2), t)
+    if t != o:
+        wr(path, t)
+        print('credits ->', os.path.relpath(path, WORK))
+    return t != o
+
+
+apply_credit(os.path.join(WORK, 'res', 'values', 'strings.xml'), CREDIT_EN)
+for bn in glob.glob(os.path.join(WORK, 'res', 'values-bn', 'strings.xml')):
+    t = rd(bn)
+    if '</resources>' not in t:
+        continue
+    block = ''.join(
+        '    <string name="%s">%s</string>\n' % (n, esc_xml(v))
+        for n, v in CREDIT_BN.items()
+        if ('name="%s"' % n) not in t)
+    if block:
+        wr(bn, t.replace('</resources>', block + '</resources>', 1))
+        print('credits (bn) ->', os.path.relpath(bn, WORK))
 
 # ---------------------------------------------------------------- adaptive icon
 banner('ADAPTIVE ICON')
@@ -191,6 +278,8 @@ else:
         w, h = img.size
         src = art_round if stem.endswith('round') else art
         out = src.resize((w, h), Image.LANCZOS)
+        if MASK:
+            out = _circle_mask(out) if stem.endswith('round') else _rounded_mask(out, SQUIRCLE)
         if ext == 'webp':
             out.save(f, 'WEBP', quality=95)
         elif ext in ('jpg', 'jpeg'):
@@ -213,10 +302,13 @@ else:
                 continue
             img = Image.open(f)
             w, h = img.size
-            canvas = Image.new('RGBA', (w, h), (0, 0, 0, 0))
-            side = int(min(w, h) * FG_RATIO)
-            s = art_fg.resize((side, side), Image.LANCZOS)
-            canvas.paste(s, ((w - side) // 2, (h - side) // 2), s)
+            if FG_RATIO >= 0.999:
+                canvas = art_fg.resize((w, h), Image.LANCZOS).convert('RGBA')
+            else:
+                canvas = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+                side = int(min(w, h) * FG_RATIO)
+                s = art_fg.resize((side, side), Image.LANCZOS)
+                canvas.paste(s, ((w - side) // 2, (h - side) // 2), s)
             if ext == 'webp':
                 canvas.save(f, 'WEBP', quality=95)
             else:
