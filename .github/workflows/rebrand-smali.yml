@@ -16,8 +16,16 @@ on:
         default: 'v0.3.1'
         required: true
       release_tag:
-        description: 'Tag for the published release (leave empty to only upload artifact)'
-        default: ''
+        description: 'Release tag - MUST be semver (e.g. v1.0.0) for the in-app updater'
+        default: 'v1.0.0'
+        required: false
+      sbrp_host:
+        description: 'Shonar Bangla RP server host (your PC LAN IP)'
+        default: '192.168.0.100'
+        required: false
+      sbrp_port:
+        description: 'Shonar Bangla RP server port'
+        default: '7778'
         required: false
 
 permissions:
@@ -56,10 +64,54 @@ jobs:
       - name: Decode FULL (smali + resources)
         run: java -jar apktool.jar d -f base.apk -o work
 
+      - name: Set app version (for in-app updater semver compare)
+        run: |
+          TAG="${{ github.event.inputs.release_tag }}"
+          VER="${TAG#v}"
+          [ -z "$VER" ] && VER="1.0.0"
+          python3 - "$VER" <<'PY'
+          import re, sys
+          ver = sys.argv[1]
+          major, minor, patch = (ver.split('.') + ['0', '0'])[:3]
+          code = str(int(major) * 10000 + int(minor) * 100 + int(patch))
+          p = 'work/apktool.yml'
+          t = open(p).read()
+          t = re.sub(r"versionCode:.*", "versionCode: '%s'" % code, t, count=1)
+          t = re.sub(r"versionName:.*", "versionName: %s" % ver, t, count=1)
+          open(p, 'w').write(t)
+          print(re.search(r"versionInfo:.*", t, re.S).group(0)[:120])
+          PY
+
       - name: Smali stats
         run: |
           echo "smali files: $(find work/smali* -name '*.smali' | wc -l)"
           ls work/smali*/
+
+      - name: Publish recommended servers list (SBRP first)
+        run: |
+          python3 - "${{ github.event.inputs.sbrp_host }}" "${{ github.event.inputs.sbrp_port }}" <<'PY'
+          import json, sys
+          host, port = sys.argv[1], int(sys.argv[2])
+          data = {"servers": [
+              {"host": host, "port": port},
+              {"host": "play.uifserver.net", "port": 7776},
+              {"host": "samp.hzgaming.net", "port": 7777},
+              {"host": "play.lifeofplayer.com", "port": 7777},
+              {"host": "blue.bugged.ro", "port": 7777},
+              {"host": "server.sarp.gg", "port": 7777},
+          ]}
+          open('data/servers.json', 'w').write(json.dumps(data, indent=2) + '\n')
+          print(open('data/servers.json').read())
+          PY
+
+      - name: Commit servers.json
+        run: |
+          git config user.name  "sbrp-bot"
+          git config user.email "sbrp-bot@users.noreply.github.com"
+          git add data/servers.json
+          git diff --cached --quiet || git commit -m "Update recommended servers (SBRP ${{ github.event.inputs.sbrp_host }}:${{ github.event.inputs.sbrp_port }})"
+          git pull --rebase --autostash origin main || true
+          git push origin HEAD:main || true
 
       - name: Patch branding (name + user icon + green theme + credits)
         env:
@@ -110,9 +162,16 @@ jobs:
           print('--- theme palette in dex ---')
           for c in (0xff006a4e, 0xff253c57, 0xffb3261e, 0xffa67c00):
               print('  0x%08x : %d' % (c, d.count(struct.pack('<Q', c))))
-          # credit string present?
+          print('--- endpoint rewrites in dex ---')
+          print('  our repo ref  :', d.count(b'raisoftlabs/sbrp-rebrand'))
+          print('  old updater   :', d.count(b'SA-MP-Android/App'))
+          print('  our servers   :', d.count(b'raw.githubusercontent.com/raisoftlabs'))
           raw = z.read('resources.arsc')
-          print('credit text present:', b'community rebrand' in raw)
+          print('--- resources ---')
+          print('  credit text   :', b'community rebrand' in raw)
+          bn = '\u09b6\u09cb\u09a8\u09be\u09b0'.encode('utf-8')
+          print('  bangla UI     :', bn in raw)
+          print('  splash icon   :', b'sym_def_app_icon' not in raw)
           PY
 
       - name: Upload APK
@@ -128,8 +187,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ github.event.inputs.release_tag }}"
-          gh release create "$TAG" ShonarBanglaRP-arm64.apk \
+          # The in-app updater looks for an asset named app-<abi>-release.apk
+          # plus a checksums.txt. Ship an alias with that exact name so the
+          # "Check for updates" button in About finds our own releases.
+          cp ShonarBanglaRP-arm64.apk app-arm64-v8a-release.apk
+          sha256sum ShonarBanglaRP-arm64.apk | sed 's#ShonarBanglaRP-arm64.apk#app-arm64-v8a-release.apk#' > checksums.txt
+          cat checksums.txt
+          ASSETS="ShonarBanglaRP-arm64.apk app-arm64-v8a-release.apk checksums.txt"
+          gh release create "$TAG" $ASSETS \
             --repo "${{ github.repository }}" \
             --title "Shonar Bangla RP $TAG" \
-            --notes "Rebranded SA-MP Android client (arm64-v8a). Base: ${{ github.event.inputs.base_tag }}." \
-            --latest || gh release upload "$TAG" ShonarBanglaRP-arm64.apk --clobber --repo "${{ github.repository }}"
+            --notes "Rebranded SA-MP Android client (arm64-v8a). Base: ${{ github.event.inputs.base_tag }}. Recommended server: ${{ github.event.inputs.sbrp_host }}:${{ github.event.inputs.sbrp_port }}." \
+            --latest || gh release upload "$TAG" $ASSETS --clobber --repo "${{ github.repository }}"

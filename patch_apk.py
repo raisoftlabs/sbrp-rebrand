@@ -329,4 +329,168 @@ for c in glob.glob(os.path.join(WORK, 'res', 'values*', 'colors.xml')):
         wr(c, t2)
         print(os.path.relpath(c, WORK), '->', want)
 
+# ---------------------------------------------------------------- splash icon
+banner('SPLASH ICON')
+for st in glob.glob(os.path.join(WORK, 'res', 'values*', 'styles.xml')):
+    t = rd(st)
+    t2 = t.replace('@android:drawable/sym_def_app_icon', '@mipmap/ic_launcher')
+    if t2 != t:
+        wr(st, t2)
+        print('splash icon -> @mipmap/ic_launcher  (%s)' % os.path.relpath(st, WORK))
+
+# ---------------------------------------------------------------- bangla UI
+banner('BANGLA UI STRINGS')
+# Native Bangla (Unicode) for the most-visible UI strings. The stock app ships
+# values-bn with only framework strings, so every launcher_* label fell back to
+# English even on a Bangla locale. This fills the important ones in.
+BN_UI = {
+    # tabs
+    'launcher_tab_home': 'হোম',
+    'launcher_tab_servers': 'সার্ভার',
+    'launcher_tab_resources': 'রিসোর্স',
+    'launcher_tab_settings': 'সেটিংস',
+    'launcher_tab_raksamp': 'রাকস্যাম্প',
+    # home
+    'launcher_home_title': LABEL,
+    'launcher_home_heading': 'গেম লঞ্চার',
+    'launcher_home_active_server': 'নির্বাচিত সার্ভার',
+    'launcher_home_choose_server': 'একটি সার্ভার বেছে নিন',
+    'launcher_home_manage_servers': 'সার্ভার ব্যবস্থাপনা',
+    'launcher_home_no_server_title': 'কোনো সংরক্ষিত সার্ভার নেই',
+    'launcher_home_no_server_description': 'সংযোগ কনফিগার করতে ও গেম চালু করতে একটি সার্ভার যোগ করুন।',
+    'launcher_home_resources_ready': 'রিসোর্স প্রস্তুত',
+    'launcher_home_resources_not_checked': 'রিসোর্স পরীক্ষা করা হয়নি',
+    'launcher_home_resources_checking': 'রিসোর্স পরীক্ষা করা হচ্ছে',
+    'launcher_home_resources_checking_description': 'প্রয়োজনীয় গেম ফাইল পরীক্ষা করা হচ্ছে',
+    'launcher_home_resources_complete': 'প্রয়োজনীয় গেম ফাইল পাওয়া গেছে',
+    'launcher_home_resources_not_ready': 'রিসোর্স অনুপলব্ধ',
+    'launcher_home_resources_check_description': 'গেম ফাইল পরীক্ষা করতে রিসোর্স ব্যবস্থাপনা খুলুন',
+    'launcher_home_resources_error_description': 'ফলাফল দেখতে রিসোর্স ব্যবস্থাপনা খুলুন',
+    'launcher_home_select_prompt': 'কোনো সার্ভার নির্বাচিত হয়নি',
+    'launcher_home_select_description': 'সংযোগ করতে একটি সংরক্ষিত সার্ভার নির্বাচন করুন।',
+    'launcher_home_server_library': 'সার্ভার ব্যবস্থাপনা',
+    'launcher_home_switch_server': 'সার্ভার পরিবর্তন',
+    'launcher_home_welcome': 'ডাকনাম: %1$s',
+    # actions
+    'launcher_action_add_server': 'সার্ভার যোগ করুন',
+    'launcher_action_back': 'পেছনে',
+    'launcher_action_cancel': 'বাতিল',
+    'launcher_action_check_resources': 'রিসোর্স পরীক্ষা করুন',
+    'launcher_action_clear_filters': 'ফিল্টার মুছুন',
+    'launcher_action_clear_search': 'সার্চ মুছুন',
+    'launcher_action_close': 'বন্ধ করুন',
+    'launcher_action_copy': 'কপি করুন',
+    'launcher_action_delete': 'মুছুন',
+    'launcher_action_download': 'ডাউনলোড',
+    'launcher_action_enter_game': 'গেমে প্রবেশ করুন',
+    'launcher_action_extract': 'এক্সট্রাক্ট করুন',
+    'launcher_action_favorite': 'প্রিয়তে যোগ করুন',
+    'launcher_action_fetch_sources': 'সোর্স আনুন',
+    'launcher_action_hide_details': 'বিস্তারিত লুকান',
+    'launcher_action_import_local_zip': 'লোকাল জিপ ইমপোর্ট করুন',
+    'launcher_action_launch': 'চালু করুন',
+    'launcher_action_more': 'আরও',
+    'launcher_action_players': 'খেলোয়াড়',
+    'launcher_action_refresh': 'রিফ্রেশ',
+    'launcher_action_remove': 'সরান',
+    'launcher_action_restore_default': 'ডিফল্টে ফিরিয়ে নিন',
+    'launcher_action_retry': 'আবার চেষ্টা করুন',
+    'launcher_action_rules': 'নিয়মাবলী',
+    'launcher_action_save': 'সংরক্ষণ করুন',
+    'launcher_action_show_details': 'বিস্তারিত দেখান',
+    'launcher_action_unfavorite': 'প্রিয় থেকে সরান',
+    'launcher_action_view_chat_log': 'চ্যাট লগ দেখুন',
+    'launcher_action_view_launcher_log': 'লঞ্চার লগ দেখুন',
+    'launcher_action_view_samp_log': 'স্যাম্প লগ দেখুন',
+    # servers
+    'launcher_servers_description': 'একটি সার্ভার নির্বাচন করে খেলা শুরু করুন।',
+    'launcher_servers_empty_title': 'কোনো সার্ভার নেই',
+    'launcher_servers_empty_message': 'শুরু করতে একটি সার্ভার যোগ করুন।',
+    'launcher_servers_search_label': 'সার্ভার খুঁজুন',
+    'launcher_servers_filter_all': 'সব',
+    'launcher_servers_filter_favorites': 'প্রিয়',
+    'launcher_servers_tab_saved': 'সংরক্ষিত',
+    'launcher_servers_tab_recommended': 'প্রস্তাবিত',
+    'launcher_servers_density_compact': 'সংক্ষিপ্ত',
+    'launcher_servers_density_comfortable': 'আরামদায়ক',
+    'launcher_recommended_header_title': 'প্রস্তাবিত সার্ভার',
+    'launcher_recommended_empty_title': 'কিছু পাওয়া যায়নি',
+    'launcher_recommended_added': 'সার্ভার যোগ করা হয়েছে',
+    'launcher_label_server_host': 'সার্ভার ঠিকানা',
+    'launcher_label_server_port': 'পোর্ট',
+    'launcher_label_server_password': 'পাসওয়ার্ড',
+    'launcher_label_nickname': 'ডাকনাম',
+    'launcher_add_server_title': 'সার্ভার যোগ করুন',
+    'launcher_add_server_default_port_help': 'ডিফল্ট পোর্ট ৭৭৭৭',
+    'launcher_server_players_label': 'খেলোয়াড়',
+    'launcher_server_ping_label': 'পিং',
+    # settings
+    'launcher_settings_intro': 'অ্যাপটি আপনার পছন্দমতো সাজিয়ে নিন।',
+    'launcher_settings_general_title': 'সাধারণ',
+    'launcher_settings_appearance_title': 'অ্যাপিয়ারেন্স',
+    'launcher_settings_ingame_title': 'ইন-গেম',
+    'launcher_settings_notifications_title': 'নোটিফিকেশন',
+    'launcher_settings_debug_title': 'ডিবাগ',
+    'launcher_settings_about_title': 'সম্পর্কে',
+    'launcher_settings_section_client': 'ক্লায়েন্ট',
+    'launcher_settings_section_display': 'ডিসপ্লে',
+    'launcher_settings_section_experience': 'অভিজ্ঞতা',
+    'launcher_settings_section_input': 'ইনপুট',
+    'launcher_settings_section_language': 'ভাষা',
+    'launcher_settings_section_tools': 'টুলস',
+    'launcher_settings_section_updates': 'আপডেট',
+    'launcher_label_language': 'ভাষা',
+    'launcher_label_theme_mode': 'থিম মোড',
+    'launcher_label_theme_color': 'থিম রঙ',
+    'launcher_label_dynamic_color': 'মনেট ডায়নামিক রঙ',
+    'launcher_label_font_size': 'ফন্ট সাইজ: %1$dsp',
+    'launcher_label_client_version': 'স্যাম্প ক্লায়েন্ট ভার্সন',
+    'launcher_label_client_version_name': 'ক্লায়েন্ট ভার্সনের নাম',
+    'launcher_label_nickname': 'ডাকনাম',
+    'launcher_label_show_fps': 'FPS দেখান',
+    'launcher_label_show_chat_timestamp': 'চ্যাটে সময় দেখান',
+    'launcher_label_native_keyboard': 'নেটিভ কীবোর্ড ব্যবহার করুন',
+    'launcher_label_bottom_bar': 'নিচের নেভিগেশন',
+    'launcher_label_fps_limit': 'ফ্রেম রেট সীমা',
+    # about
+    'launcher_about_check_update': 'আপডেট দেখুন',
+    'launcher_about_checking_update': 'আপডেট দেখা হচ্ছে…',
+    'launcher_about_up_to_date': 'আপনি সর্বশেষ ভার্সনে আছেন',
+    'launcher_about_update_available': 'নতুন আপডেট পাওয়া গেছে',
+    'launcher_about_update_failed': 'আপডেট দেখা ব্যর্থ হয়েছে',
+    'launcher_about_version_value': 'ভার্সন %1$s',
+    # resources
+    'launcher_resources_check_title': 'রিসোর্স পরীক্ষা',
+    'launcher_resources_official_list': 'অফিসিয়াল তালিকা',
+    'launcher_resources_not_ready': 'রিসোর্স প্রস্তুত নয়',
+    'launcher_resources_section_game': 'গেম',
+    'launcher_resources_section_cleo': 'ক্লিও',
+    'launcher_resources_section_monet': 'মনেট',
+    # logs
+    'launcher_log_refresh': 'রিফ্রেশ',
+    'launcher_log_clear': 'মুছুন',
+    'launcher_log_copied': 'কপি হয়েছে',
+    'launcher_log_cleared': 'মুছে ফেলা হয়েছে',
+}
+
+bn_paths = glob.glob(os.path.join(WORK, 'res', 'values-bn', 'strings.xml'))
+if not bn_paths:
+    print('WARN: no values-bn/strings.xml found')
+for bn in bn_paths:
+    t = rd(bn)
+    if '</resources>' not in t:
+        print('WARN: %s has no </resources>' % bn)
+        continue
+    block = []
+    for name, val in BN_UI.items():
+        pat = r'(<string name="%s"[^>]*>)[^<]*(</string>)' % re.escape(name)
+        if re.search(pat, t):
+            t = re.sub(pat, lambda m: m.group(1) + esc_xml(val) + m.group(2), t)
+        else:
+            block.append('    <string name="%s">%s</string>\n' % (name, esc_xml(val)))
+    if block:
+        t = t.replace('</resources>', ''.join(block) + '</resources>', 1)
+    wr(bn, t)
+    print('bangla UI ->', os.path.relpath(bn, WORK), '| strings:', len(BN_UI))
+
 banner('DONE')
