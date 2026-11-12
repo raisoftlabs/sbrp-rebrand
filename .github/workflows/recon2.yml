@@ -1,0 +1,68 @@
+name: Recon2 smali dump
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_tag:
+        description: 'base release tag'
+        default: 'v0.3.1'
+        required: true
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: apktool
+        run: |
+          TAG=$(curl -s https://api.github.com/repos/iBotPeaches/Apktool/releases/latest | grep -oP '"tag_name":\s*"\K[^"]+')
+          curl -sL -o apktool.jar "https://github.com/iBotPeaches/Apktool/releases/download/${TAG}/apktool_${TAG#v}.jar"
+
+      - name: base apk
+        run: |
+          curl -L --fail -o base.apk \
+            "https://github.com/SA-MP-Android/App/releases/download/${{ github.event.inputs.base_tag }}/app-arm64-v8a-release.apk"
+
+      - name: FULL decode
+        run: java -jar apktool.jar d -f base.apk -o full
+
+      - name: Targeted greps
+        run: |
+          echo '########## materialkolor callers ##########'
+          grep -rl 'materialkolor' full/smali 2>/dev/null | head -40
+          echo '########## dynamicColorScheme refs ##########'
+          grep -rn 'dynamicColorScheme\|rememberDynamicColorScheme\|materialColorScheme\|dynamicLightColorScheme\|dynamicDarkColorScheme' full/smali 2>/dev/null | head -40
+          echo '########## non-lib Color classes ##########'
+          find full/smali -iname '*Color*.smali' -not -path '*androidx*' -not -path '*kotlin*' -not -path '*com/google*' 2>/dev/null | head -60
+          echo '########## app package classes ##########'
+          find full/smali/top -name '*.smali' 2>/dev/null
+          echo '########## non-lib class count ##########'
+          find full/smali -name '*.smali' -not -path '*androidx*' -not -path '*kotlin*' -not -path '*kotlinx*' -not -path '*com/google*' -not -path '*org/jetbrains*' 2>/dev/null | wc -l
+          echo '########## MainActivity ##########'
+          cat full/smali/top/th1nk/samp/MainActivity.smali
+
+      - name: Tar filtered smali + res
+        run: |
+          cd full/smali
+          find . -name '*.smali' \
+            -not -path './androidx/*' -not -path './kotlin/*' -not -path './kotlinx/*' \
+            -not -path './com/google/*' -not -path './org/jetbrains/*' > /tmp/list.txt
+          echo "files: $(wc -l < /tmp/list.txt)"
+          tar -czf "$GITHUB_WORKSPACE/smali.tar.gz" -T /tmp/list.txt
+          cd "$GITHUB_WORKSPACE"
+          tar -czf res.tar.gz -C full res AndroidManifest.xml
+          ls -lh smali.tar.gz res.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smali-dump
+          path: |
+            smali.tar.gz
+            res.tar.gz
+          retention-days: 3
