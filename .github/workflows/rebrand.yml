@@ -67,7 +67,7 @@ jobs:
         run: python3 patch_apk.py work
 
       - name: Rebuild
-        run: java -jar apktool.jar b work --use-aapt2 -o unsigned.apk
+        run: java -jar apktool.jar b work -o unsigned.apk
 
       - name: Ensure signing keystore (persist in repo)
         run: |

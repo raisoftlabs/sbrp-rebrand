@@ -153,6 +153,32 @@ if bg_refs:
                     print('color', nm, '->', ICON_BG)
         wr(c, t)
 
+# solid black background drawable (adaptive background layer)
+SHAPE = ('<?xml version="1.0" encoding="utf-8"?>\n'
+         '<shape xmlns:android="http://schemas.android.com/apk/res/android" '
+         'android:shape="rectangle"><solid android:color="' + ICON_BG + '"/></shape>\n')
+for ref in bg_refs:
+    if not ref.startswith('@drawable/'):
+        continue
+    nm = ref.split('/', 1)[1]
+    for d in glob.glob(os.path.join(WORK, 'res', 'drawable*')):
+        for f in glob.glob(os.path.join(d, nm + '.*')):
+            ext = f.rsplit('.', 1)[1].lower()
+            print('bg drawable found:', os.path.relpath(f, WORK), '(', ext, ')')
+            if ext == 'xml':
+                print('  ->', rd(f).strip()[:300])
+                wr(f, SHAPE)
+                print('  bg drawable set to solid', ICON_BG)
+            elif ext in ('webp', 'png') and Image is not None:
+                img = Image.open(f)
+                w, h = img.size
+                solid = Image.new('RGB', (w, h), ICON_BG)
+                if ext == 'webp':
+                    solid.save(f, 'WEBP', quality=95)
+                else:
+                    solid.save(f, 'PNG')
+                print('  bg raster set to solid', ICON_BG, f'{w}x{h}')
+
 # foreground raster replacement (safe zone: art at 66% of canvas, centered)
 if Image is not None:
     fg_bases = {base_of(r) for r in fg_names}
