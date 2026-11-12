@@ -1,0 +1,105 @@
+name: Rebrand SBRP client
+
+# manual only — the keystore commit-back must not retrigger a run
+on:
+  workflow_dispatch:
+    inputs:
+      label:
+        description: 'App name'
+        default: 'Shonar Bangla RP'
+        required: true
+      base_tag:
+        description: 'SA-MP-Android/App release tag to rebrand'
+        default: 'v0.3.1'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install tools (apktool jar + pillow)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq zipalign
+          pip install --quiet pillow
+          TAG=$(curl -s https://api.github.com/repos/iBotPeaches/Apktool/releases/latest | grep -oP '"tag_name":\s*"\K[^"]+')
+          echo "apktool $TAG"
+          curl -sL -o apktool.jar "https://github.com/iBotPeaches/Apktool/releases/download/${TAG}/apktool_${TAG#v}.jar"
+          ls -la apktool.jar
+          java -jar apktool.jar --version
+
+      - name: Download base APK
+        run: |
+          TAG="${{ github.event.inputs.base_tag }}"
+          URL="https://github.com/SA-MP-Android/App/releases/download/${TAG}/app-arm64-v8a-release.apk"
+          echo "base: $URL"
+          curl -L --fail -o base.apk "$URL"
+          ls -la base.apk
+
+      - name: Decode (resources only — dex copied verbatim)
+        run: java -jar apktool.jar d -f -s base.apk -o work
+
+      - name: Dump decoded icon/label structure
+        run: |
+          echo '--- AndroidManifest application tag ---'
+          grep -o '<application[^>]*>' work/AndroidManifest.xml | head -c 1200; echo
+          echo '--- mipmap / launcher files ---'
+          find work/res -iname '*launcher*' | head -60
+          echo '--- anydpi ---'
+          ls -la work/res/mipmap-anydpi* 2>/dev/null || echo '(none)'
+          echo '--- app_name string ---'
+          grep -rn 'app_name' work/res/values/strings.xml 2>/dev/null || echo '(no app_name)'
+
+      - name: Patch branding (name + icon)
+        env:
+          LABEL: ${{ github.event.inputs.label }}
+        run: python3 patch_apk.py work
+
+      - name: Rebuild
+        run: java -jar apktool.jar b work --use-aapt2 -o unsigned.apk
+
+      - name: Ensure signing keystore (persist in repo)
+        run: |
+          if [ ! -f keys/sbrp.jks ]; then
+            keytool -genkeypair -v -keystore keys/sbrp.jks -alias sbrp \
+              -keyalg RSA -keysize 2048 -validity 10950 \
+              -storepass sbrp2026 -keypass sbrp2026 \
+              -dname "CN=Shonar Bangla RP, O=SBRP, C=BD"
+            git config user.name "sbrp-bot"
+            git config user.email "sbrp-bot@users.noreply.github.com"
+            git add keys/sbrp.jks
+            git commit -m "ci: add stable signing keystore"
+            git push
+          else
+            echo "keystore present"
+          fi
+
+      - name: Align + sign
+        run: |
+          BT=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)
+          echo "build-tools: $BT"
+          "$BT/zipalign" -f -p 4 unsigned.apk aligned.apk
+          "$BT/apksigner" sign --ks keys/sbrp.jks --ks-key-alias sbrp \
+            --ks-pass pass:sbrp2026 --key-pass pass:sbrp2026 \
+            --out ShonarBanglaRP-arm64.apk aligned.apk
+          "$BT/apksigner" verify --print-certs ShonarBanglaRP-arm64.apk | head -8
+          ls -la ShonarBanglaRP-arm64.apk
+          "$BT/aapt" dump badging ShonarBanglaRP-arm64.apk | grep -E "package|application-label|native-code" | head
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShonarBanglaRP-arm64
+          path: ShonarBanglaRP-arm64.apk
+          if-no-files-found: error
