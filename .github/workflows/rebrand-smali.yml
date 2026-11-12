@@ -76,7 +76,7 @@ jobs:
           code = str(int(major) * 10000 + int(minor) * 100 + int(patch))
           p = 'work/apktool.yml'
           t = open(p).read()
-          t = re.sub(r"versionCode:.*", "versionCode: '%s'" % code, t, count=1)
+          t = re.sub(r"versionCode:.*", "versionCode: %s" % code, t, count=1)
           t = re.sub(r"versionName:.*", "versionName: %s" % ver, t, count=1)
           open(p, 'w').write(t)
           print(re.search(r"versionInfo:.*", t, re.S).group(0)[:120])
