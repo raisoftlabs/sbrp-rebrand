@@ -50,21 +50,19 @@ jobs:
       - name: Decode (resources only — dex copied verbatim)
         run: java -jar apktool.jar d -f -s base.apk -o work
 
-      - name: Dump decoded icon/label structure
+      - name: Show decoded dex location
         run: |
-          echo '--- AndroidManifest application tag ---'
-          grep -o '<application[^>]*>' work/AndroidManifest.xml | head -c 1200; echo
-          echo '--- mipmap / launcher files ---'
-          find work/res -iname '*launcher*' | head -60
-          echo '--- anydpi ---'
-          ls -la work/res/mipmap-anydpi* 2>/dev/null || echo '(none)'
-          echo '--- app_name string ---'
-          grep -rn 'app_name' work/res/values/strings.xml 2>/dev/null || echo '(no app_name)'
+          echo '--- dex in project root ---'
+          ls -la work/*.dex 2>/dev/null || echo '(none at root)'
+          find work -name '*.dex' -not -path '*smali*' | head
 
-      - name: Patch branding (name + icon)
+      - name: Patch branding (name + Bangladeshi icon set + green theme)
         env:
           LABEL: ${{ github.event.inputs.label }}
         run: python3 patch_apk.py work
+
+      - name: Patch theme palette in dex (Bangladeshi green)
+        run: python3 patch_dex.py work base.apk
 
       - name: Rebuild
         run: java -jar apktool.jar b work -o unsigned.apk
@@ -98,10 +96,10 @@ jobs:
           ls -la ShonarBanglaRP-arm64.apk
           "$BT/aapt" dump badging ShonarBanglaRP-arm64.apk | grep -E "package|application-label|native-code" | head
 
-      - name: Verify icon + label
+      - name: Verify icon + label + theme
         run: |
           python3 - <<'PY'
-          import zipfile, io
+          import zipfile, io, struct
           from PIL import Image
           z = zipfile.ZipFile('ShonarBanglaRP-arm64.apk')
           want = {(48,48),(72,72),(96,96),(144,144),(192,192),(108,108),(162,162),(216,216),(324,324),(432,432)}
@@ -113,14 +111,17 @@ jobs:
                   im = Image.open(io.BytesIO(z.read(n)))
               except Exception:
                   continue
-              if im.size not in want:
-                  continue
               if im.size not in ((192,192),(432,432)):
                   continue
               g = im.convert('L').resize((40,40))
               print('--- %s %sx%s ---' % (n, im.size[0], im.size[1]))
               for y in range(40):
                   print(''.join(chars[min(9, g.getpixel((x,y))*10//256)] for x in range(40)))
+          # theme palette check
+          d = z.read('classes.dex')
+          print('--- theme palette in dex ---')
+          for c in (0xff006a4e, 0xff253c57, 0xffb3261e, 0xffa67c00, 0xff0b5fa5, 0xff5b3e96, 0xff0b4a35):
+              print('  0x%08x : %d' % (c, d.count(struct.pack('<Q', c))))
           PY
 
       - name: Upload APK

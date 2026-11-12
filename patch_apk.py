@@ -1,17 +1,32 @@
 #!/usr/bin/env python3
-"""Rebrand the decoded SA-MP-Android APK tree: app name + launcher icon.
+"""Shonar Bangla RP rebrand: app name, Bangladeshi icon set, green theme resources.
 
 Usage:  python3 patch_apk.py <decoded_dir>
-Env:    LABEL      app name          (default "Shonar Bangla RP")
-        ART        artwork png       (default artwork/icon.png)
-        ICON_BG    adaptive bg color (default "#000000")
-"""
-import os, re, sys, glob
 
-WORK  = sys.argv[1] if len(sys.argv) > 1 else 'work'
-ART   = os.environ.get('ART', 'artwork/icon.png')
+Env:
+  LABEL      app name                    (default "Shonar Bangla RP")
+  ART        legacy squircle artwork     (default artwork/icon.png)
+  ART_ROUND  legacy round artwork        (default artwork/icon_round.png)
+  ART_FG     adaptive foreground artwork (default artwork/icon_fg.png)
+  FG_RATIO   foreground scale on canvas  (default 0.66)
+"""
+import glob
+import os
+import re
+import sys
+
+WORK = sys.argv[1] if len(sys.argv) > 1 else 'work'
 LABEL = os.environ.get('LABEL', 'Shonar Bangla RP')
-ICON_BG = os.environ.get('ICON_BG', '#000000')
+ART = os.environ.get('ART', 'artwork/icon.png')
+ART_ROUND = os.environ.get('ART_ROUND', 'artwork/icon_round.png')
+ART_FG = os.environ.get('ART_FG', 'artwork/icon_fg.png')
+FG_RATIO = float(os.environ.get('FG_RATIO', '0.66'))
+
+# Bangladeshi professional theme
+BG_TOP = '#0E825C'      # bottle green (flag field, light end)
+BG_BOT = '#003424'      # deep green (flag field, dark end)
+WINDOW_LIGHT = '#F2F8F4'  # green-tinted white window background
+WINDOW_DARK = '#0A1512'   # green-tinted near black
 
 try:
     from PIL import Image
@@ -32,9 +47,7 @@ def banner(t):
 
 
 def base_of(ref):
-    if ref and ref.startswith('@'):
-        return ref.split('/', 1)[1]
-    return None
+    return ref.split('/', 1)[1] if ref and ref.startswith('@') else None
 
 
 # ---------------------------------------------------------------- manifest
@@ -43,7 +56,7 @@ man = rd(manp)
 m = re.search(r'<application\b[^>]*>', man)
 apptag = m.group(0) if m else ''
 banner('MANIFEST <application>')
-print(apptag[:800])
+print(apptag[:600])
 icon_ref = re.search(r'android:icon="([^"]+)"', apptag)
 round_ref = re.search(r'android:roundIcon="([^"]+)"', apptag)
 print('icon ref      =', icon_ref and icon_ref.group(1))
@@ -58,12 +71,10 @@ names |= {'ic_launcher', 'ic_launcher_round'}
 
 # ---------------------------------------------------------------- label
 banner('APP LABEL -> ' + LABEL)
-# force a literal label on <application> and any activity that carries one
 new_man = re.sub(r'(<application\b[^>]*?)android:label="[^"]*"',
                  r'\1android:label="' + LABEL + '"', man, count=1)
 if 'android:label=' not in apptag:
     new_man = new_man.replace(apptag, apptag[:-1] + ' android:label="' + LABEL + '">', 1)
-# launcher activity label
 new_man = re.sub(r'(<activity\b[^>]*?)android:label="[^"]*"',
                  r'\1android:label="' + LABEL + '"', new_man)
 if new_man != man:
@@ -72,118 +83,124 @@ if new_man != man:
 else:
     print('WARN: no label change applied')
 
-# also nuke the string resources so anything reading @string/app_name matches
 for sp in glob.glob(os.path.join(WORK, 'res', 'values*', 'strings.xml')):
     t = rd(sp)
     t2 = t.replace('SA-MP Android', LABEL).replace('SA-MP  Android', LABEL)
-    # explicit app_name
-    t2 = re.sub(r'(<string name="app_name"[^>]*>)[^<]*(</string>)',
-                r'\1' + LABEL + r'\2', t2)
+    t2 = re.sub(r'(<string name="app_name"[^>]*>)[^<]*(</string>)', r'\1' + LABEL + r'\2', t2)
     if t2 != t:
         wr(sp, t2)
         print('strings updated:', os.path.relpath(sp, WORK))
 
-# ---------------------------------------------------------------- icon files
-banner('ICON RASTERS')
-print('icon resource names to replace:', sorted(names))
-targets = []
-for d in glob.glob(os.path.join(WORK, 'res', 'mipmap*')) + \
-         glob.glob(os.path.join(WORK, 'res', 'drawable*')):
-    for f in glob.glob(os.path.join(d, '*')):
-        b = os.path.basename(f)
-        if '.' not in b:
+# ---------------------------------------------------------------- adaptive icon
+banner('ADAPTIVE ICON')
+adaptive, fg_refs, bg_refs = [], set(), set()
+for d in glob.glob(os.path.join(WORK, 'res', 'mipmap-anydpi*')):
+    for f in glob.glob(os.path.join(d, '*.xml')):
+        if os.path.basename(f).rsplit('.', 1)[0] not in names:
             continue
-        stem, ext = b.rsplit('.', 1)
-        ext = ext.lower()
-        if stem in names and ext in ('png', 'webp', 'jpg', 'jpeg'):
-            targets.append(f)
-for f in sorted(targets):
-    print('  ', os.path.relpath(f, WORK))
+        adaptive.append(f)
+        t = rd(f)
+        for tag, store in (('foreground', fg_refs), ('background', bg_refs)):
+            mm = re.search(r'<' + tag + r'\b[^>]*android:drawable="([^"]+)"', t)
+            if mm:
+                store.add(mm.group(1))
+print('adaptive xml :', [os.path.relpath(f, WORK) for f in adaptive])
+print('foreground   :', fg_refs)
+print('background   :', bg_refs)
 
+fg_bases = {b for b in (base_of(r) for r in fg_refs) if b}
+
+# green gradient background layer
+VECTOR = ('<?xml version="1.0" encoding="utf-8"?>\n'
+          '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+          '    xmlns:aapt="http://schemas.android.com/aapt"\n'
+          '    android:width="108dp" android:height="108dp"\n'
+          '    android:viewportWidth="108" android:viewportHeight="108">\n'
+          '  <path android:pathData="M0,0h108v108h-108z">\n'
+          '    <aapt:attr name="android:fillColor">\n'
+          '      <gradient android:type="linear"\n'
+          '          android:startX="0" android:startY="0"\n'
+          '          android:endX="108" android:endY="108">\n'
+          '        <item android:offset="0" android:color="' + BG_TOP + '"/>\n'
+          '        <item android:offset="1" android:color="' + BG_BOT + '"/>\n'
+          '      </gradient>\n'
+          '    </aapt:attr>\n'
+          '  </path>\n'
+          '</vector>\n')
+
+for ref in bg_refs:
+    if ref.startswith('@drawable/'):
+        nm = ref.split('/', 1)[1]
+        for d in glob.glob(os.path.join(WORK, 'res', 'drawable*')):
+            for f in glob.glob(os.path.join(d, nm + '.*')):
+                ext = f.rsplit('.', 1)[1].lower()
+                if ext == 'xml':
+                    wr(f, VECTOR)
+                    print('bg vector ->', BG_TOP, '->', BG_BOT, os.path.relpath(f, WORK))
+                elif Image is not None and ext in ('webp', 'png'):
+                    im = Image.open(f)
+                    grad = Image.new('RGB', im.size)
+                    px = grad.load()
+                    w, h = im.size
+                    for y in range(h):
+                        for x in range(w):
+                            t = (x + y) / (2.0 * max(1, w - 1))
+                            px[x, y] = (int(14 + (0 - 14) * t),
+                                        int(130 + (52 - 130) * t),
+                                        int(92 + (36 - 92) * t))
+                    grad.save(f, 'WEBP' if ext == 'webp' else 'PNG')
+                    print('bg raster -> gradient', os.path.relpath(f, WORK), im.size)
+    elif ref.startswith('@color/'):
+        nm = ref.split('/', 1)[1]
+        for c in glob.glob(os.path.join(WORK, 'res', 'values*', 'colors.xml')):
+            t = rd(c)
+            t2 = re.sub(r'(<color name="' + re.escape(nm) + r'"[^>]*>)[^<]*(</color>)',
+                        r'\1' + BG_TOP + r'\2', t)
+            if t2 != t:
+                wr(c, t2)
+                print('bg color', nm, '->', BG_TOP)
+
+# ---------------------------------------------------------------- rasters
+banner('ICON RASTERS')
 if Image is None:
-    banner('PIL MISSING')
-    print('Pillow not installed -> cannot resize icons. (pip install pillow)')
+    print('Pillow missing -> cannot resize icons')
 else:
     art = Image.open(ART).convert('RGBA')
-    for f in targets:
-        stem, ext = os.path.basename(f).rsplit('.', 1)
+    art_round = Image.open(ART_ROUND).convert('RGBA')
+    art_fg = Image.open(ART_FG).convert('RGBA')
+    print('artwork:', ART, art.size, '| round:', art_round.size, '| fg:', art_fg.size)
+
+    targets = []
+    for d in glob.glob(os.path.join(WORK, 'res', 'mipmap*')) + \
+             glob.glob(os.path.join(WORK, 'res', 'drawable*')):
+        for f in glob.glob(os.path.join(d, '*')):
+            b = os.path.basename(f)
+            if '.' not in b:
+                continue
+            stem, ext = b.rsplit('.', 1)
+            if stem in names and ext.lower() in ('png', 'webp', 'jpg', 'jpeg'):
+                targets.append(f)
+
+    for f in sorted(targets):
+        b = os.path.basename(f)
+        stem, ext = b.rsplit('.', 1)
         ext = ext.lower()
+        if stem in fg_bases:
+            continue                      # handled below with the foreground art
         img = Image.open(f)
         w, h = img.size
-        # adaptive foregrounds live in mipmap-* with a bigger canvas
-        out = art.resize((w, h), Image.LANCZOS)
+        src = art_round if stem.endswith('round') else art
+        out = src.resize((w, h), Image.LANCZOS)
         if ext == 'webp':
             out.save(f, 'WEBP', quality=95)
         elif ext in ('jpg', 'jpeg'):
             out.convert('RGB').save(f, 'JPEG', quality=95)
         else:
             out.save(f, 'PNG')
-        print('  wrote', os.path.relpath(f, WORK), f'{w}x{h}', ext)
+        print('  legacy ', os.path.relpath(f, WORK), f'{w}x{h}', ext)
 
-# ---------------------------------------------------------------- adaptive icon
-banner('ADAPTIVE ICON (mipmap-anydpi-v26)')
-adaptive = []
-for d in glob.glob(os.path.join(WORK, 'res', 'mipmap-anydpi*')):
-    adaptive += [f for f in glob.glob(os.path.join(d, '*.xml'))
-                 if os.path.basename(f).rsplit('.', 1)[0] in names]
-print('adaptive xml:', [os.path.relpath(f, WORK) for f in adaptive])
-
-fg_names, bg_refs = set(), set()
-for f in adaptive:
-    t = rd(f)
-    print('---', os.path.relpath(f, WORK))
-    print(t.strip()[:500])
-    for tag, store in (('foreground', fg_names), ('background', bg_refs)):
-        mm = re.search(r'<' + tag + r'\b[^>]*android:drawable="([^"]+)"', t)
-        if mm:
-            store.add(mm.group(1))
-print('foreground refs:', fg_names)
-print('background refs:', bg_refs)
-
-# black background color for the adaptive layer
-if bg_refs:
-    for c in glob.glob(os.path.join(WORK, 'res', 'values*', 'colors.xml')):
-        t = rd(c)
-        for ref in bg_refs:
-            if ref.startswith('@color/'):
-                nm = ref.split('/', 1)[1]
-                if f'<color name="{nm}"' in t:
-                    t = re.sub(r'(<color name="' + re.escape(nm) + r'"[^>]*>)[^<]*(</color>)',
-                               r'\1' + ICON_BG + r'\2', t)
-                    print('color', nm, '->', ICON_BG)
-        wr(c, t)
-
-# solid black background drawable (adaptive background layer)
-SHAPE = ('<?xml version="1.0" encoding="utf-8"?>\n'
-         '<shape xmlns:android="http://schemas.android.com/apk/res/android" '
-         'android:shape="rectangle"><solid android:color="' + ICON_BG + '"/></shape>\n')
-for ref in bg_refs:
-    if not ref.startswith('@drawable/'):
-        continue
-    nm = ref.split('/', 1)[1]
-    for d in glob.glob(os.path.join(WORK, 'res', 'drawable*')):
-        for f in glob.glob(os.path.join(d, nm + '.*')):
-            ext = f.rsplit('.', 1)[1].lower()
-            print('bg drawable found:', os.path.relpath(f, WORK), '(', ext, ')')
-            if ext == 'xml':
-                print('  ->', rd(f).strip()[:300])
-                wr(f, SHAPE)
-                print('  bg drawable set to solid', ICON_BG)
-            elif ext in ('webp', 'png') and Image is not None:
-                img = Image.open(f)
-                w, h = img.size
-                solid = Image.new('RGB', (w, h), ICON_BG)
-                if ext == 'webp':
-                    solid.save(f, 'WEBP', quality=95)
-                else:
-                    solid.save(f, 'PNG')
-                print('  bg raster set to solid', ICON_BG, f'{w}x{h}')
-
-# foreground raster replacement (safe zone: art at 66% of canvas, centered)
-if Image is not None:
-    fg_bases = {base_of(r) for r in fg_names}
-    fg_bases.discard(None)
-    print('foreground bases:', fg_bases)
+    # adaptive foreground: art centred in the safe zone
+    print('foreground bases:', fg_bases, 'ratio', FG_RATIO)
     for d in glob.glob(os.path.join(WORK, 'res', 'mipmap*')) + \
              glob.glob(os.path.join(WORK, 'res', 'drawable*')):
         for f in glob.glob(os.path.join(d, '*')):
@@ -197,13 +214,27 @@ if Image is not None:
             img = Image.open(f)
             w, h = img.size
             canvas = Image.new('RGBA', (w, h), (0, 0, 0, 0))
-            side = int(min(w, h) * 0.66)
-            art_s = art.resize((side, side), Image.LANCZOS)
-            canvas.paste(art_s, ((w - side) // 2, (h - side) // 2), art_s)
+            side = int(min(w, h) * FG_RATIO)
+            s = art_fg.resize((side, side), Image.LANCZOS)
+            canvas.paste(s, ((w - side) // 2, (h - side) // 2), s)
             if ext == 'webp':
                 canvas.save(f, 'WEBP', quality=95)
             else:
                 canvas.save(f, 'PNG')
-            print('  fg wrote', os.path.relpath(f, WORK), f'{w}x{h}')
+            print('  fg     ', os.path.relpath(f, WORK), f'{w}x{h}', ext)
+
+# ---------------------------------------------------------------- theme colours
+banner('THEME COLOURS')
+for c in glob.glob(os.path.join(WORK, 'res', 'values*', 'colors.xml')):
+    night = 'values-night' in c
+    want = WINDOW_DARK if night else WINDOW_LIGHT
+    t = rd(c)
+    if '<color name="launcher_window_background"' not in t:
+        continue
+    t2 = re.sub(r'(<color name="launcher_window_background"[^>]*>)[^<]*(</color>)',
+                r'\1' + want + r'\2', t)
+    if t2 != t:
+        wr(c, t2)
+        print(os.path.relpath(c, WORK), '->', want)
 
 banner('DONE')
